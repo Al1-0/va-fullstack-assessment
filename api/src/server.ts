@@ -1,6 +1,7 @@
 import http from 'http';
 import express from 'express';
 import cors from 'cors';
+import WebSocket from 'ws';
 
 const app = express();
 app.use(cors({ origin: true, credentials: false }));
@@ -25,7 +26,7 @@ app.get('/health', async (_req, res) => {
 // Assessment: implement the API below.
 // The emulator is a black box: it only outputs data. Its base URL is EMULATOR_URL
 // (e.g. http://emulator:3001 with Docker, or http://localhost:3001 locally).
-// Emulator exposes only:
+// Emulator exposes onCly:
 //   GET {EMULATOR_URL}/sensors   → static metadata (sensorId, sensorName, unit)
 //   WS  {EMULATOR_URL}/ws/telemetry → stream of readings { sensorId, value, timestamp }
 // The emulator does not store or serve "latest" readings. You must:
@@ -43,3 +44,21 @@ const HOST = process.env.HOST || '0.0.0.0';
 server.listen(Number(PORT), HOST, () => {
   console.log(`API server listening on http://${HOST}:${PORT}`);
 });
+
+async function test() {
+  const req1 = await fetch(`${EMULATOR_URL}/sensors`);
+  const data = await req1.json();
+  console.log(`request 1: ${JSON.stringify(data)}`);
+
+  let ws = new WebSocket('ws://localhost:3001/ws/telemetry');
+
+  ws.on('error', console.error);
+
+  // ws.on('message', function message(data) {
+  //   console.log('received: %s', data);
+  // });
+
+};
+
+test();
+
