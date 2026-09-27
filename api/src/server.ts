@@ -1,7 +1,11 @@
 import http from 'http';
 import express from 'express';
 import cors from 'cors';
-import WebSocket from 'ws';
+import {WebSocket, WebSocketServer} from 'ws';
+import { SensorMetaData, getAllSensorMetaData, SensorReading, loadSensorMetadata, getSensorMetaData, isValid, inRange} from '.';
+import swaggerUi from 'swagger-ui-express';
+import YAML from 'yamljs';
+import path from 'path';
 
 const app = express();
 app.use(cors({ origin: true, credentials: false }));
@@ -41,24 +45,127 @@ const server = http.createServer(app);
 const PORT = process.env.PORT || 4000;
 const HOST = process.env.HOST || '0.0.0.0';
 
-server.listen(Number(PORT), HOST, () => {
-  console.log(`API server listening on http://${HOST}:${PORT}`);
+let latestReadings: Map<number, SensorReading> = new Map();
+let outOfRangeReadings: Map<number, SensorReading[]> = new Map();
+
+const openapiSpec = YAML.load(path.join(__dirname, '../openapi.yaml'));
+
+// Swagger UI
+app.use('/docs', swaggerUi.serve, swaggerUi.setup(openapiSpec));
+
+// returns all sensor meta data to client
+app.get('/metadata', (_req, res) => {
+  const data = getAllSensorMetaData();
+  res.json(data);
 });
 
-async function test() {
-  const req1 = await fetch(`${EMULATOR_URL}/sensors`);
-  const data = await req1.json();
-  console.log(`request 1: ${JSON.stringify(data)}`);
+// returns latest readings per sensor
+app.get('/latest', (_req, res) => {
+  const jsonData = Object.fromEntries(latestReadings);
+  res.json(jsonData);
+});
 
-  let ws = new WebSocket('ws://localhost:3001/ws/telemetry');
+// check if at more than 3 out-of-range readings are within 5 seconds
+// return error messgae if they are and warning if not
+function outOfRangeHandler(reading: SensorReading) {
 
-  ws.on('error', console.error);
+  let sensorValues = outOfRangeReadings.get(reading.sensorId);
+  if (sensorValues === undefined) {
+    sensorValues = [reading]
+    outOfRangeReadings.set(reading.sensorId, sensorValues);
+    return;
+    // print nothing on a sensors first invalid reading
+  }
 
-  // ws.on('message', function message(data) {
-  //   console.log('received: %s', data);
-  // });
+  sensorValues.push(reading);
 
-};
+  const metaData = getSensorMetaData(reading.sensorId);
+  const date = new Date(reading.timestamp * 1000);
 
-test();
+  if (sensorValues.length < 4 ||
+      Math.abs(sensorValues[3].timestamp - sensorValues[0].timestamp) > 5
+    ) {
+    console.log(`WARNING: Out-of-Range Reading -- ${metaData?.sensorName} (${metaData?.sensorId} reading: ${reading.value} ${metaData?.unit} at ${date.toUTCString()})`);
+  }
+  else {
+    console.log(`ERROR: Out-of-Range Reading (More than 3 within 5 seconds) -- ${metaData?.sensorName} (${metaData?.sensorId} reading: ${reading.value} ${metaData?.unit} at ${date.toUTCString()})`);
+  }
 
+  if (sensorValues.length == 4) sensorValues.shift(); // pop the oldest reading
+
+  outOfRangeReadings.set(reading.sensorId, sensorValues); // update out-of-range archive
+  return;
+}
+
+// helper: push valid reading to client
+function broadcastReading(reading: SensorReading, inRange_: boolean) {
+  const payload = JSON.stringify({ type: 'reading', inRange: inRange_,data: reading});
+  for (const client of wss.clients) {
+    if (client.readyState === client.OPEN) {
+      client.send(payload);
+    }
+  }
+}
+
+function connectToEmulatorStream() {
+  const emulatorWs = new WebSocket(`${EMULATOR_URL.replace('http', 'ws')}/ws/telemetry`);
+
+  emulatorWs.on('open', () => {
+    console.log('Connected to emulator sensor data stream');
+  });
+
+  emulatorWs.on('message', (raw) => {
+    try {
+      const reading = JSON.parse(raw.toString());
+
+      if (isValid(reading)) {
+        if (!inRange(reading)) {
+          outOfRangeHandler(reading);
+        } else {
+          latestReadings.set(reading.sensorId, reading); // only add in-range and valid readings
+        }
+
+        broadcastReading(reading, inRange(reading));
+      }
+    } catch (error) {
+      console.log(error);
+    }
+    
+  });
+
+  emulatorWs.on('error', (err) => {
+    console.error('Emulator WS error:', err);
+  });
+
+  emulatorWs.on('close', () => {
+    console.log('Emulator WS connection lost: attempting to reconnect in 5s...');
+    setTimeout(connectToEmulatorStream, 5000);
+  });
+}
+
+const wss = new WebSocketServer({ server, path: '/ws/telemetry' }); // own websocket server to send latest data as a stream
+
+wss.on("connection", (client) => {
+  console.log(`---Sensor Data API stream connected---`);
+
+  const jsonLatestReadings = Object.fromEntries(latestReadings);
+  client.send(JSON.stringify({ type: 'snapshot', data: jsonLatestReadings }));
+
+  client.on('close', () => {
+    console.log('---Sensor Data API stream closed---');
+  });
+
+  client.on('error', (err) => {
+    console.error('-- Websocket error: ', err);
+  });
+});
+
+async function main() {
+  await loadSensorMetadata();
+  connectToEmulatorStream();
+  server.listen(Number(PORT), HOST, () => {
+    console.log(`API server listening on http://${HOST}:${PORT}`);
+  });
+}
+
+main();
