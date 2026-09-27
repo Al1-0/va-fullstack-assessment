@@ -13,6 +13,69 @@ paths:
       responses:
         '200':
           description: OK
+  /metadata:
+    get:
+      summary: Lists sensor metadata
+      description: >
+        Returns static metadata for every known sensor, converting sensorId
+        to a human-readable name and unit. Sourced from the emulators
+        /sensors endpoint at startup and cached in memory.
+      responses:
+        '200':
+          description: Array of sensor metadata
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SensorMetaData'
+  /latest:
+    get:
+      summary: Latest in-range reading per sensor
+      description: >
+        Returns the most recent valid, in-range reading for each sensor,
+        keyed by sensorId. Out-of-range and invalid readings are excluded
+        from this endpoint (see /ws/telemetry which is documented seperately in README.md,
+        for the full live stream including out-of-range readings).
+      responses:
+        '200':
+          description: Object mapping of sensorId to latest reading
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  $ref: '#/components/schemas/SensorReading'
 servers:
   - url: http://localhost:4000
     description: Local development server
+components:
+  schemas:
+    SensorMetaData:
+      type: object
+      required: [sensorId, sensorName, unit]
+      properties:
+        sensorId:
+          type: integer
+          example: 3000000060001
+        sensorName:
+          type: string
+          example: PACK_CURRENT
+        unit:
+          type: string
+          example: A
+
+    SensorReading:
+      type: object
+      required: [sensorId, value, timestamp]
+      properties:
+        sensorId:
+          type: integer
+          example: 3000000060001
+        value:
+          type: number
+          example: 67.23
+        timestamp:
+          type: number
+          description: Unix timestamp in seconds (fractional part = sub-second precision)
+          example: 1790304910.286
