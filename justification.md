@@ -77,18 +77,43 @@ Use this section to briefly explain your frontend design decisions. Bullet point
 
 - Link to your low-fidelity Figma mockup and what it shows:
 
+https://www.figma.com/design/sUtgwiOy7IH3A76TV6ayyG/Untitled?node-id=0-1&t=sMXgb35viO3V7FJP-1
+
+The mockup shows a simple diagram of the car wih the wheels and body being clickable. Upon cliking, the sesnor datat shows up on a panel to the RHS. On the LHS, a static panels shows car vitas (speed, brake pressure, Battery steering and motor temp). Below there is a static table showing the latest data of all sensors along with out-of-range reading rate and if the reading is out-of-range.
+
 ### 2. Layout and information hierarchy
 
 - Why you structured the dashboard the way you did:
+
+The raw data itself is an important part of the web page. So the bottom half of the page is the table which stores this info in a spreadsheet-like view. The top is comprised of the digram and the vitals panel. The vitals consists of code vehicle data which should be seen in quickly (speed, brake pressure, steering angle and motor temp) so it is made larger than other elements and takes up a third of the width. The rest of the width is taken up by the diagram which shows the car visually with wheels or battery data being selectable via a click of the diagram. This breaks the trend of pure numbers and helps the user visualise what going on with the car besides looking at the table.
 
 ### 3. API consumption
 
 - How you use `/sensors` and `/telemetry` (and WebSocket, if used):
 
+(note: /sensors --> /metadata & /telemtry --> /latest)
+
+- /metadata is called once and stored on cache for conversion between sensorID and name where needed.
+
+- ws /telmetry is used to supply the entire page with up-to-date readings. The data is streamed and the page updates all readings as they come in.
+
+- /latest is not used for the frontend. I found no need for it as the WS did everything it could and more.
+
 ### 4. Visual design and usability
 
 - Choices around colours, typography, states, and responsiveness:
 
+I kept to the colour scheme of the skeleton (dark theme) with colors to signify different things:
+- red: out-of-range readings, also in teh coloumn 'out-of-range (5s)' when there are more than 3 readings not in-range within the lat 5 seconds
+- white: netural conotations, in-range data.
+- green: signifies in-range data on 'status' column of the table and on teh diagram.
+
 ### 5. Trade-offs and limitations
 
 - Anything you would do with more time or a different stack:
+
+I would have found a way to show both latest in-range data any time a reading for a sensor went out of range. This way in-range data is always shown but out-of-range is also shwon allowing the user to see both, giving them flexibility.
+
+Plotting the data (for perhaps the last 10s of readings) for each sensor and would have been a great addition and shown trends and providing more useful info to the user.
+
+I would have also wanted to work with invalid readings to track the rate of invalid readings being output, see if they were recoverable and possibly recovering them, and also providing warning data about execive invalid data coming from a given sensor.
