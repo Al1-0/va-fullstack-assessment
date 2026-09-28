@@ -1,9 +1,14 @@
 'use client';
+import { useTelemetry } from '@/hooks/useTelemetry';
 
 import Image from 'next/image';
 import { useEffect, useState } from 'react';
 import { fetchHealth, API_BASE_URL } from '../lib/api-client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
+
+import { SensorTable } from '@/components/ui/SensorTable';
+import { VitalsPanel } from '@/components/ui/VitalsPanel';
+import { Diagram } from '@/components/ui/Diagram';
 
 export default function Page() {
   // 'checking' → initial state; 'ok' or 'unhealthy' after first health check.
@@ -41,6 +46,9 @@ export default function Page() {
     };
   }, []);
 
+  const { metadataMap, latestReadings, outOfRangeCounts, status } = useTelemetry();
+  
+
   return (
     <main className="min-h-screen bg-background text-foreground">
       <header className="border-b border-border bg-background/80 px-6 py-4">
@@ -73,6 +81,9 @@ export default function Page() {
                   ? 'Checking…'
                   : 'API unreachable'}
             </div>
+            <div className="rounded-full border border-border bg-card px-3 py-1 text-xs text-muted-foreground">
+              Stream: {status}
+            </div>
           </div>
         </div>
       </header>
@@ -92,7 +103,7 @@ export default function Page() {
           </Card>
         )}
 
-        <Card className="border-muted">
+        {/* <Card className="border-muted">
           <CardHeader>
             <CardTitle className="text-sm uppercase tracking-[0.2em] text-muted-foreground">
               Dashboard data
@@ -111,14 +122,28 @@ export default function Page() {
               and consider status (e.g. colours for safe/unsafe ranges). Use shadcn/ui for layout and components.
             </p>
           </CardContent>
-        </Card>
+        </Card> */}
+
+        <div className="grid gap-6 items-start lg:grid-cols-[280px_1fr]">
+          <VitalsPanel metadataMap={metadataMap} latestReadings={latestReadings} />
+           <Diagram metadataMap={metadataMap} latestReadings={latestReadings} />
+        </div>
 
         <section className="space-y-3">
           <h2 className="text-sm font-semibold tracking-tight">All sensors</h2>
           <div className="overflow-x-auto rounded-xl border border-border bg-card">
-            <div className="flex min-h-[120px] items-center justify-center p-6 text-center text-sm text-muted-foreground">
-              No sensor data yet. Add your metadata and telemetry API calls in <code className="rounded bg-muted px-1 py-0.5 text-xs">api-client.ts</code> and
-              use them in this page to populate the table.
+            <div className="overflow-x-auto rounded-xl border border-border bg-card">
+              {latestReadings.size === 0 ? (
+                <div className="flex min-h-[120px] items-center justify-center p-6 text-center text-sm text-muted-foreground">
+                  Waiting for sensor data…
+                </div>
+              ) : (
+                <SensorTable
+                  metadataMap={metadataMap}
+                  latestReadings={latestReadings}
+                  outOfRangeCounts={outOfRangeCounts}
+                />
+              )}
             </div>
           </div>
         </section>
