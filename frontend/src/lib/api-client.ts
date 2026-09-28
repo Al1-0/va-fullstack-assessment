@@ -17,10 +17,22 @@ export interface TelemetryReading {
   timestamp: number;
 }
 
+export interface TelemetryMessage {
+  type: 'snapshot' | 'reading';
+  data: Record<string, TelemetryReading> | TelemetryReading;
+  inRange?: boolean;
+}
+
 export interface HealthResponse {
   status: string;
   emulator?: boolean;
   reason?: string;
+}
+
+export interface TelemetryStreamHandlers {
+  onOpen?: () => void;
+  onError?: (err: Event) => void;
+  onClose?: () => void;
 }
 
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:4000';
@@ -52,3 +64,41 @@ export async function fetchHealth(timeoutMs = 3000): Promise<HealthResponse> {
 // or whatever paths and response shapes you defined). Use the types above
 // or define new ones to match your API.
 // ---------------------------------------------------------------------------
+
+
+// metadata API 
+export async function fetchSensorMetadata(): Promise<SensorMetadata[]> {
+  const res = await fetch(`${API_BASE_URL}/metadata`, { mode: 'cors' });
+  if (!res.ok) {
+    throw new Error(`Metadata fetch failed: ${res.status} ${res.statusText}`);
+  }
+  return res.json();
+}
+
+// helper to build map for all sensor meta data
+export function buildMetadataMap(metadata: SensorMetadata[]): Map<number, SensorMetadata> {
+  return new Map(metadata.map((entry) => [entry.sensorId, entry]));
+}
+
+// telemetry steam WS wrapper
+export function connectTelemetryStream(
+  onMessage: (msg: TelemetryMessage) => void,
+  handlers: TelemetryStreamHandlers = {}
+): WebSocket {
+  const wsUrl = API_BASE_URL.replace(/^http/, 'ws') + '/ws/telemetry';
+  const ws = new WebSocket(wsUrl);
+
+  ws.onopen = () => handlers.onOpen?.();
+  ws.onerror = (err) => handlers.onError?.(err);
+  ws.onclose = () => handlers.onClose?.();
+
+  ws.onmessage = (event) => {
+    try {
+      onMessage(JSON.parse(event.data) as TelemetryMessage);
+    } catch (err) {
+      console.error('Failed to parse telemetry message:', err);
+    }
+  };
+
+  return ws;
+}
